@@ -1,13 +1,28 @@
 body {
     min-height: 100vh;
-    background-color: black;
+    margin: 0px;
     font-family: sans-serif;
+    font-size: 20px;
+    background-image: url("./assets/background.png");
+    background-size: cover;
 }
 
 .main {
     min-height: 100vh;
     color: white;
     display: flex;
+    flex-wrap: nowrap;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
+    background-color: #00000025
+    
+}
+
+.main .highlight {
+    margin-top: 20px;
+    border: 1px solid white;
+    border-radius: 20px;
+    padding: 5px 10px;
+    font-size: 12px;
 }
