@@ -1,0 +1,13 @@
+body {
+    min-height: 100vh;
+    background-color: black;
+    font-family: sans-serif;
+}
+
+.main {
+    min-height: 100vh;
+    color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
