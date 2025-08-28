@@ -8,12 +8,12 @@ import (
 )
 
 type Transaction struct {
-	From   string
-	To     string
-	Amount uint64
-	Fee    uint64
-	Data   []byte
-	Sig    []byte
+	From   string `json:"From"`
+	To     string `json:"To"`
+	Amount int    `json:"Amount"`
+	Fee    int    `json:"Fee"`
+	Data   string `json:"Data"`
+	Sig    string `json:"Sig"` // <-- was []byte or base64, now plain string
 }
 
 type Block struct {
