@@ -13,7 +13,7 @@ export default function Dashboard() {
   const [blocks, setBlocks] = useState<Block[]>([]);
 
   useEffect(() => {
-    fetch("https://sphere-backend.up.railway.app/blocks")
+    fetch("https://loving-light-production.up.railway.app/blocks")
       .then((res) => res.json())
       .then((data: Block[]) => setBlocks(data));
   }, []);
