@@ -1,123 +1,91 @@
+// app/test-tx/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
-type Block = {
-  Height: number;
-  Hash: string;
-  PrevHash: string;
-  Timestamp: number;
-  Validator: string;
-  Transactions: {
-    From: string;
-    To: string;
-    Amount: number;
-    Fee: number;
-    Data: string;
-    Sig: string;
-  }[];
-};
-
-export default function Dashboard() {
-  const [blocks, setBlocks] = useState<Block[]>([]);
+export default function TestTxPage() {
   const [from, setFrom] = useState("alice");
   const [to, setTo] = useState("bob");
   const [amount, setAmount] = useState(100);
+  const [fee, setFee] = useState(1);
   const [data, setData] = useState("Test transaction");
-  const API_URL = "https://loving-light-production.up.railway.app";
+  const [sig, setSig] = useState("abc123"); // plain string now
+  const [response, setResponse] = useState<any>(null);
 
-  // Fetch blocks
-  const fetchBlocks = async () => {
-    const res = await fetch(`${API_URL}/blocks`);
-    const data: Block[] = await res.json();
-    setBlocks(data);
-  };
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-  useEffect(() => {
-    fetchBlocks();
-  }, []);
+    const res = await fetch("https://loving-light-production.up.railway.app/tx", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ From: from, To: to, Amount: amount, Fee: fee, Data: data, Sig: sig }),
+    });
 
-  // Submit a new block
-  const handleAddBlock = async () => {
-    try {
-      const res = await fetch(`${API_URL}/tx`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          From: from,
-          To: to,
-          Amount: amount,
-          Fee: 1,
-          Data: data,
-          Sig: btoa("test-signature") // temporary base64-encoded signature
-        })
-      });
-
-      if (!res.ok) throw new Error("Failed to add block");
-      await fetchBlocks(); // refresh blocks
-      alert("Block added!");
-    } catch (err) {
-      console.error(err);
-      alert("Error adding block. Check backend logs.");
-    }
+    const json = await res.json();
+    setResponse(json);
   };
 
   return (
-    <div className="bg-black text-orange-500 min-h-screen p-6">
-      <h1 className="text-4xl font-bold">Sphere Dashboard</h1>
+    <div className="flex flex-col items-center p-8">
+      <h1 className="text-2xl font-bold text-orange-500">🚀 Add Test Transaction</h1>
 
-      {/* Block List */}
-      <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-orange-900/20 rounded-2xl p-4">
-          <h2 className="text-2xl">Latest Blocks</h2>
-          <ul className="mt-2">
-            {blocks.slice(-5).map((b) => (
-              <li key={b.Hash} className="text-sm">
-                #{b.Height} – {b.Hash.slice(0, 10)}...
-              </li>
-            ))}
-          </ul>
-        </div>
+      <form onSubmit={handleSubmit} className="mt-6 space-y-4 w-full max-w-md">
+        <input
+          type="text"
+          placeholder="From"
+          value={from}
+          onChange={(e) => setFrom(e.target.value)}
+          className="w-full p-2 border rounded"
+        />
+        <input
+          type="text"
+          placeholder="To"
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+          className="w-full p-2 border rounded"
+        />
+        <input
+          type="number"
+          placeholder="Amount"
+          value={amount}
+          onChange={(e) => setAmount(Number(e.target.value))}
+          className="w-full p-2 border rounded"
+        />
+        <input
+          type="number"
+          placeholder="Fee"
+          value={fee}
+          onChange={(e) => setFee(Number(e.target.value))}
+          className="w-full p-2 border rounded"
+        />
+        <input
+          type="text"
+          placeholder="Data"
+          value={data}
+          onChange={(e) => setData(e.target.value)}
+          className="w-full p-2 border rounded"
+        />
+        <input
+          type="text"
+          placeholder="Signature"
+          value={sig}
+          onChange={(e) => setSig(e.target.value)}
+          className="w-full p-2 border rounded"
+        />
+        <button
+          type="submit"
+          className="w-full bg-orange-500 text-white p-2 rounded hover:bg-orange-600"
+        >
+          Submit Transaction
+        </button>
+      </form>
 
-        {/* Test Block Form */}
-        <div className="bg-orange-900/20 rounded-2xl p-4 flex flex-col gap-2">
-          <h2 className="text-2xl">Add Test Block</h2>
-          <input
-            type="text"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-            placeholder="From"
-            className="p-2 rounded bg-orange-800 text-orange-100"
-          />
-          <input
-            type="text"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            placeholder="To"
-            className="p-2 rounded bg-orange-800 text-orange-100"
-          />
-          <input
-            type="number"
-            value={amount}
-            onChange={(e) => setAmount(Number(e.target.value))}
-            placeholder="Amount"
-            className="p-2 rounded bg-orange-800 text-orange-100"
-          />
-          <input
-            type="text"
-            value={data}
-            onChange={(e) => setData(e.target.value)}
-            placeholder="Data"
-            className="p-2 rounded bg-orange-800 text-orange-100"
-          />
-          <button
-            onClick={handleAddBlock}
-            className="mt-2 px-4 py-2 bg-orange-600 text-black rounded-xl hover:bg-orange-400"
-          >
-            Add Test Block
-          </button>
+      {response && (
+        <div className="mt-6 w-full max-w-md p-4 border rounded bg-black text-white">
+          <h2 className="font-bold">✅ Block Created:</h2>
+          <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(response, null, 2)}</pre>
         </div>
-      </div>
+      )}
     </div>
   );
 }
