@@ -1,14 +1,21 @@
-// app/dashboard/page.tsx
 "use client";
 import { useState, useEffect } from "react";
 
+type Block = {
+  Height: number;
+  Hash: string;
+  PrevHash: string;
+  Timestamp: number;
+  Validator: string;
+};
+
 export default function Dashboard() {
-  const [blocks, setBlocks] = useState<any[]>([]);
+  const [blocks, setBlocks] = useState<Block[]>([]);
 
   useEffect(() => {
     fetch("https://sphere-backend.up.railway.app/blocks")
       .then((res) => res.json())
-      .then(setBlocks);
+      .then((data: Block[]) => setBlocks(data));
   }, []);
 
   return (
