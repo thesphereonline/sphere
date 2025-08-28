@@ -20,8 +20,8 @@ type Block = {
 
 export default function Dashboard() {
   const [blocks, setBlocks] = useState<Block[]>([]);
-  const [from, setFrom] = useState("alice");
-  const [to, setTo] = useState("bob");
+  const [from, setFrom] = useState("joe");
+  const [to, setTo] = useState("cerys");
   const [amount, setAmount] = useState(100);
   const [data, setData] = useState("Test transaction");
   const [sig, setSig] = useState("test-signature"); // plain string now
