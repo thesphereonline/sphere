@@ -1,195 +1,125 @@
 package dex
 
 import (
-	"context"
 	"database/sql"
 	"errors"
-	"math/big"
+	"fmt"
 )
 
-type Dex struct {
-	db *sql.DB
-	// Optional: protocol fee basis points
-	ProtocolFeeBps int64
-}
-
-func New(db *sql.DB, protocolFeeBps int64) *Dex {
-	return &Dex{db: db, ProtocolFeeBps: protocolFeeBps}
-}
-
+// Pool represents a liquidity pool
 type Pool struct {
-	ID       int
-	TokenA   string
-	TokenB   string
-	ReserveA *big.Int
-	ReserveB *big.Int
-	TotalLP  *big.Int
-	FeeBps   int64
+	ID       int     `json:"id"`
+	TokenA   string  `json:"token_a"`
+	TokenB   string  `json:"token_b"`
+	ReserveA float64 `json:"reserve_a"`
+	ReserveB float64 `json:"reserve_b"`
+	FeeBps   int     `json:"fee_bps"`
 }
 
-func parseBig(s string) *big.Int {
-	i := new(big.Int)
-	i.SetString(s, 10)
-	return i
+type Module struct {
+	db  *sql.DB
+	fee int // protocol fee in basis points (e.g. 5 = 0.05%)
 }
 
-func (d *Dex) GetPool(ctx context.Context, poolID int) (*Pool, error) {
-	var resA, resB, totalLP string
-	var tokenA, tokenB string
-	var feeBps int64
-	row := d.db.QueryRowContext(ctx, `SELECT token_a, token_b, reserve_a, reserve_b, total_lp, fee_bps FROM pools WHERE id=$1`, poolID)
-	if err := row.Scan(&tokenA, &tokenB, &resA, &resB, &totalLP, &feeBps); err != nil {
+// New creates a new DEX module instance
+func New(db *sql.DB, feeBps int) *Module {
+	m := &Module{db: db, fee: feeBps}
+	m.ensureSchema()
+	return m
+}
+
+// ensureSchema creates the pools table if not exists
+func (m *Module) ensureSchema() {
+	query := `
+	CREATE TABLE IF NOT EXISTS pools (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		token_a TEXT NOT NULL,
+		token_b TEXT NOT NULL,
+		reserve_a REAL NOT NULL,
+		reserve_b REAL NOT NULL,
+		fee_bps INTEGER NOT NULL
+	);`
+	_, _ = m.db.Exec(query)
+}
+
+// ListPools returns all pools
+func (m *Module) ListPools() ([]Pool, error) {
+	rows, err := m.db.Query("SELECT id, token_a, token_b, reserve_a, reserve_b, fee_bps FROM pools")
+	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
+
+	var pools []Pool
+	for rows.Next() {
+		var p Pool
+		if err := rows.Scan(&p.ID, &p.TokenA, &p.TokenB, &p.ReserveA, &p.ReserveB, &p.FeeBps); err != nil {
+			return nil, err
+		}
+		pools = append(pools, p)
+	}
+	return pools, nil
+}
+
+// AddPool inserts a new pool
+func (m *Module) AddPool(tokenA, tokenB string, reserveA, reserveB float64) (*Pool, error) {
+	query := `INSERT INTO pools (token_a, token_b, reserve_a, reserve_b, fee_bps) VALUES (?, ?, ?, ?, ?)`
+	res, err := m.db.Exec(query, tokenA, tokenB, reserveA, reserveB, m.fee)
+	if err != nil {
+		return nil, err
+	}
+	id, _ := res.LastInsertId()
 	return &Pool{
-		ID:       poolID,
+		ID:       int(id),
 		TokenA:   tokenA,
 		TokenB:   tokenB,
-		ReserveA: parseBig(resA),
-		ReserveB: parseBig(resB),
-		TotalLP:  parseBig(totalLP),
-		FeeBps:   feeBps,
+		ReserveA: reserveA,
+		ReserveB: reserveB,
+		FeeBps:   m.fee,
 	}, nil
 }
 
-// AddLiquidity: owner must have transferred tokens in design. For demo we skip balance transfers.
-func (d *Dex) AddLiquidity(ctx context.Context, poolID int, owner string, amountAStr, amountBStr string) error {
-	tx, err := d.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
+// Swap performs a token swap (constant product AMM: x*y=k)
+func (m *Module) Swap(poolID int, fromToken string, amountIn, minOut float64, trader string) (float64, error) {
+	// Load pool
+	var pool Pool
+	row := m.db.QueryRow("SELECT id, token_a, token_b, reserve_a, reserve_b, fee_bps FROM pools WHERE id=?", poolID)
+	if err := row.Scan(&pool.ID, &pool.TokenA, &pool.TokenB, &pool.ReserveA, &pool.ReserveB, &pool.FeeBps); err != nil {
+		return 0, errors.New("pool not found")
 	}
-	defer func() {
-		if err != nil {
-			tx.Rollback()
-		} else {
-			tx.Commit()
+
+	// Apply fee
+	amountInWithFee := amountIn * (1.0 - float64(pool.FeeBps)/10000.0)
+
+	var amountOut float64
+	if fromToken == pool.TokenA {
+		// Swap A → B
+		amountOut = (pool.ReserveB * amountInWithFee) / (pool.ReserveA + amountInWithFee)
+		if amountOut < minOut {
+			return 0, errors.New("slippage: insufficient output")
 		}
-	}()
-
-	// lock pool row
-	var resA, resB, totalLP string
-	if err := tx.QueryRowContext(ctx, `SELECT reserve_a, reserve_b, total_lp FROM pools WHERE id=$1 FOR UPDATE`, poolID).
-		Scan(&resA, &resB, &totalLP); err != nil {
-		return err
-	}
-
-	reserveA := parseBig(resA)
-	reserveB := parseBig(resB)
-	total := parseBig(totalLP)
-	amountA := parseBig(amountAStr)
-	amountB := parseBig(amountBStr)
-
-	var lpMint *big.Int
-	zero := big.NewInt(0)
-	if total.Cmp(zero) == 0 {
-		// initial liquidity -> mint sqrt(amountA * amountB)
-		prod := new(big.Int).Mul(amountA, amountB)
-		lpMint = integerSqrt(prod)
+		pool.ReserveA += amountIn
+		pool.ReserveB -= amountOut
+	} else if fromToken == pool.TokenB {
+		// Swap B → A
+		amountOut = (pool.ReserveA * amountInWithFee) / (pool.ReserveB + amountInWithFee)
+		if amountOut < minOut {
+			return 0, errors.New("slippage: insufficient output")
+		}
+		pool.ReserveB += amountIn
+		pool.ReserveA -= amountOut
 	} else {
-		// lpMint = min(amountA * total / reserveA, amountB * total / reserveB)
-		lpA := new(big.Int).Div(new(big.Int).Mul(amountA, total), reserveA)
-		lpB := new(big.Int).Div(new(big.Int).Mul(amountB, total), reserveB)
-		if lpA.Cmp(lpB) < 0 {
-			lpMint = lpA
-		} else {
-			lpMint = lpB
-		}
+		return 0, fmt.Errorf("invalid token: %s", fromToken)
 	}
 
-	reserveA.Add(reserveA, amountA)
-	reserveB.Add(reserveB, amountB)
-	total.Add(total, lpMint)
-
-	if _, err := tx.ExecContext(ctx, `UPDATE pools SET reserve_a=$1, reserve_b=$2, total_lp=$3 WHERE id=$4`,
-		reserveA.String(), reserveB.String(), total.String(), poolID); err != nil {
-		return err
-	}
-
-	// upsert lp position
-	_, err = tx.ExecContext(ctx, `
-      INSERT INTO lp_positions (pool_id, owner, lp_amount) VALUES ($1,$2,$3)
-      ON CONFLICT (pool_id, owner) DO UPDATE SET lp_amount = (lp_positions.lp_amount::numeric + $3::numeric)::text`, poolID, owner, lpMint.String())
+	// Update DB
+	_, err := m.db.Exec(
+		"UPDATE pools SET reserve_a=?, reserve_b=? WHERE id=?",
+		pool.ReserveA, pool.ReserveB, pool.ID,
+	)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	return nil
-}
-
-func (d *Dex) Swap(ctx context.Context, poolID int, fromToken string, amountInStr string, minOutStr string, trader string) (string, error) {
-	tx, err := d.db.BeginTx(ctx, nil)
-	if err != nil {
-		return "", err
-	}
-	defer func() {
-		if err != nil {
-			tx.Rollback()
-		} else {
-			tx.Commit()
-		}
-	}()
-
-	var tokenA, tokenB, resAStr, resBStr string
-	var feeBps int64
-	if err := tx.QueryRowContext(ctx, `SELECT token_a, token_b, reserve_a, reserve_b, fee_bps FROM pools WHERE id=$1 FOR UPDATE`, poolID).
-		Scan(&tokenA, &tokenB, &resAStr, &resBStr, &feeBps); err != nil {
-		return "", err
-	}
-
-	reserveA := parseBig(resAStr)
-	reserveB := parseBig(resBStr)
-	amountIn := parseBig(amountInStr)
-	minOut := parseBig(minOutStr)
-
-	var reserveIn, reserveOut *big.Int
-	if fromToken == tokenA {
-		reserveIn = reserveA
-		reserveOut = reserveB
-	} else if fromToken == tokenB {
-		reserveIn = reserveB
-		reserveOut = reserveA
-	} else {
-		return "", errors.New("invalid token")
-	}
-
-	// amountInWithFee = amountIn * (10000 - feeBps) / 10000
-	numerator := new(big.Int).Mul(amountIn, big.NewInt(int64(10000-feeBps)))
-	denom := new(big.Int).Add(new(big.Int).Mul(reserveIn, big.NewInt(10000)), numerator)
-	amountOut := new(big.Int).Div(new(big.Int).Mul(numerator, reserveOut), denom)
-
-	if amountOut.Cmp(minOut) < 0 {
-		return "", errors.New("insufficient output amount")
-	}
-
-	// Update reserves
-	reserveIn.Add(reserveIn, amountIn)
-	reserveOut.Sub(reserveOut, amountOut)
-
-	if fromToken == tokenA {
-		if _, err := tx.ExecContext(ctx, `UPDATE pools SET reserve_a=$1, reserve_b=$2 WHERE id=$3`, reserveIn.String(), reserveOut.String(), poolID); err != nil {
-			return "", err
-		}
-	} else {
-		if _, err := tx.ExecContext(ctx, `UPDATE pools SET reserve_a=$1, reserve_b=$2 WHERE id=$3`, reserveOut.String(), reserveIn.String(), poolID); err != nil {
-			return "", err
-		}
-	}
-
-	// TODO: handle balances transfer, protocol fee accounting
-	return amountOut.String(), nil
-}
-
-func integerSqrt(a *big.Int) *big.Int {
-	if a.Cmp(big.NewInt(0)) == 0 {
-		return big.NewInt(0)
-	}
-	z := new(big.Int).Rsh(a, uint(a.BitLen()/2))
-	big.NewInt(1)
-	for {
-		y := new(big.Int).Div(new(big.Int).Add(new(big.Int).Div(a, z), z), big.NewInt(2))
-		if y.Cmp(z) >= 0 {
-			return z
-		}
-		z = y
-	}
+	return amountOut, nil
 }

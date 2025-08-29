@@ -1,9 +1,7 @@
 package api
 
 import (
-	"context"
 	"database/sql"
-	"net/http"
 	"strconv"
 
 	"sphere/internal/modules/dex"
@@ -11,74 +9,55 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func registerDexRoutes(app *fiber.App, db *sql.DB, dexModule *dex.Dex) {
-	// list pools
+func registerDexRoutes(app *fiber.App, db *sql.DB, dexModule *dex.Module) {
+	// List all pools
 	app.Get("/dex/pools", func(c *fiber.Ctx) error {
-		rows, err := db.QueryContext(context.Background(), `SELECT id, token_a, token_b, reserve_a, reserve_b, total_lp FROM pools ORDER BY id`)
+		pools, err := dexModule.ListPools()
 		if err != nil {
-			return c.Status(http.StatusInternalServerError).SendString(err.Error())
+			return c.Status(500).SendString(err.Error())
 		}
-		defer rows.Close()
-		var out []any
-		for rows.Next() {
-			var id int
-			var a, b, ra, rb, tl string
-			if err := rows.Scan(&id, &a, &b, &ra, &rb, &tl); err != nil {
-				return err
-			}
-			out = append(out, fiber.Map{"id": id, "token_a": a, "token_b": b, "reserve_a": ra, "reserve_b": rb, "total_lp": tl})
-		}
-		return c.JSON(out)
+		return c.JSON(pools)
 	})
 
-	// create pool
+	// Create a new pool
 	app.Post("/dex/pools", func(c *fiber.Ctx) error {
 		var body struct {
-			TokenA string `json:"tokenA"`
-			TokenB string `json:"tokenB"`
+			TokenA   string  `json:"tokenA"`
+			TokenB   string  `json:"tokenB"`
+			ReserveA float64 `json:"reserveA"`
+			ReserveB float64 `json:"reserveB"`
 		}
 		if err := c.BodyParser(&body); err != nil {
 			return c.Status(400).SendString(err.Error())
 		}
-		if _, err := db.ExecContext(context.Background(), `INSERT INTO pools (token_a, token_b) VALUES ($1,$2)`, body.TokenA, body.TokenB); err != nil {
+		pool, err := dexModule.AddPool(body.TokenA, body.TokenB, body.ReserveA, body.ReserveB)
+		if err != nil {
 			return c.Status(500).SendString(err.Error())
 		}
-		return c.SendStatus(201)
+		return c.Status(201).JSON(pool)
 	})
 
-	// add liquidity
-	app.Post("/dex/pools/:id/add", func(c *fiber.Ctx) error {
-		id, _ := strconv.Atoi(c.Params("id"))
-		var body struct {
-			Owner   string `json:"owner"`
-			AmountA string `json:"amountA"`
-			AmountB string `json:"amountB"`
-		}
-		if err := c.BodyParser(&body); err != nil {
-			return c.Status(400).SendString(err.Error())
-		}
-		if err := dexModule.AddLiquidity(context.Background(), id, body.Owner, body.AmountA, body.AmountB); err != nil {
-			return c.Status(500).SendString(err.Error())
-		}
-		return c.SendStatus(200)
-	})
-
-	// swap
+	// Swap tokens
 	app.Post("/dex/pools/:id/swap", func(c *fiber.Ctx) error {
-		id, _ := strconv.Atoi(c.Params("id"))
+		id, err := strconv.Atoi(c.Params("id"))
+		if err != nil {
+			return c.Status(400).SendString("invalid pool id")
+		}
+
 		var body struct {
-			FromToken string `json:"fromToken"`
-			AmountIn  string `json:"amountIn"`
-			MinOut    string `json:"minOut"`
-			Trader    string `json:"trader"`
+			FromToken string  `json:"fromToken"`
+			AmountIn  float64 `json:"amountIn"`
+			MinOut    float64 `json:"minOut"`
+			Trader    string  `json:"trader"`
 		}
 		if err := c.BodyParser(&body); err != nil {
 			return c.Status(400).SendString(err.Error())
 		}
-		out, err := dexModule.Swap(context.Background(), id, body.FromToken, body.AmountIn, body.MinOut, body.Trader)
+
+		amountOut, err := dexModule.Swap(id, body.FromToken, body.AmountIn, body.MinOut, body.Trader)
 		if err != nil {
 			return c.Status(400).SendString(err.Error())
 		}
-		return c.JSON(fiber.Map{"amountOut": out})
+		return c.JSON(fiber.Map{"amountOut": amountOut})
 	})
 }
