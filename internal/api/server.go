@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"sphere/internal/core"
@@ -10,7 +11,7 @@ import (
 )
 
 // StartServer runs the API server
-func StartServer(bc *core.Blockchain, port string) error {
+func StartServer(bc *core.Blockchain, port string, db *sql.DB) error {
 	app := fiber.New()
 
 	// Enable CORS for frontend
@@ -24,6 +25,10 @@ func StartServer(bc *core.Blockchain, port string) error {
 	// Blockchain routes
 	app.Get("/blocks", func(c *fiber.Ctx) error {
 		return c.JSON(bc.Chain)
+	})
+
+	app.Get("/healthz", func(c *fiber.Ctx) error {
+		return c.SendString("ok")
 	})
 
 	app.Post("/tx", func(c *fiber.Ctx) error {

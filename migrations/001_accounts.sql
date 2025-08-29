@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS accounts (
+  address TEXT PRIMARY KEY,
+  balance BIGINT NOT NULL DEFAULT 0,
+  nonce BIGINT NOT NULL DEFAULT 0,
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMP DEFAULT now()
+);

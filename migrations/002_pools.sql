@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS pools (
+  id SERIAL PRIMARY KEY,
+  token_a TEXT NOT NULL,
+  token_b TEXT NOT NULL,
+  reserve_a TEXT NOT NULL DEFAULT '0',
+  reserve_b TEXT NOT NULL DEFAULT '0',
+  total_lp TEXT NOT NULL DEFAULT '0',
+  fee_bps INT NOT NULL DEFAULT 30,
+  created_at TIMESTAMP DEFAULT now()
+);

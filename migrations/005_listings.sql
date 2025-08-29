@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS listings (
+  id SERIAL PRIMARY KEY,
+  nft_id INT REFERENCES nfts(id) ON DELETE CASCADE,
+  seller TEXT NOT NULL,
+  price TEXT NOT NULL,
+  currency TEXT DEFAULT 'SPHERE',
+  active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT now()
+);
