@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sphere/internal/core"
+	"sphere/internal/modules/dex"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -21,6 +22,12 @@ func StartServer(bc *core.Blockchain, port string, db *sql.DB) error {
 		AllowHeaders:     "Content-Type",
 		AllowCredentials: true,
 	}))
+
+	// create module instances
+	dexModule := dex.New(db, 5) // protocolFeeBps
+
+	// register routes
+	registerDexRoutes(app, db, dexModule)
 
 	// Blockchain routes
 	app.Get("/blocks", func(c *fiber.Ctx) error {
