@@ -4,62 +4,78 @@ package core
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"strconv"
 	"time"
 )
 
+// Transaction represents a blockchain transaction
 type Transaction struct {
-	From   string `json:"From"`
-	To     string `json:"To"`
-	Amount int    `json:"Amount"`
-	Fee    int    `json:"Fee"`
-	Data   string `json:"Data"`
-	Sig    string `json:"Sig"` // <-- was []byte or base64, now plain string
+	From   string  `json:"from"`
+	To     string  `json:"to"`
+	Amount float64 `json:"amount"`
+	Fee    float64 `json:"fee"`
+	Data   string  `json:"data"`
+	Sig    string  `json:"sig"`
 }
 
+// Block represents a blockchain block
 type Block struct {
-	Height       uint64
-	PrevHash     string
-	Timestamp    int64
-	Transactions []Transaction
-	Validator    string
-	Hash         string
+	Height       int           `json:"height"`
+	Hash         string        `json:"hash"`
+	PrevHash     string        `json:"prevHash"`
+	Timestamp    int64         `json:"timestamp"`
+	Validator    string        `json:"validator"`
+	Transactions []Transaction `json:"transactions"`
 }
 
+// Blockchain is a chain of blocks
 type Blockchain struct {
-	Chain []*Block
+	Chain []Block
 }
 
+// NewBlockchain initializes the blockchain with a genesis block
 func NewBlockchain() *Blockchain {
-	genesis := &Block{
+	genesis := Block{
 		Height:    0,
+		Hash:      "genesis",
 		PrevHash:  "",
 		Timestamp: time.Now().Unix(),
+		Validator: "genesis-validator",
 	}
-	genesis.Hash = hashBlock(genesis)
-	return &Blockchain{Chain: []*Block{genesis}}
+	return &Blockchain{Chain: []Block{genesis}}
 }
 
+// AddBlock adds a new block with transactions to the chain
 func (bc *Blockchain) AddBlock(txs []Transaction, validator string) *Block {
 	prev := bc.Chain[len(bc.Chain)-1]
-	block := &Block{
+	block := Block{
 		Height:       prev.Height + 1,
 		PrevHash:     prev.Hash,
 		Timestamp:    time.Now().Unix(),
-		Transactions: txs,
 		Validator:    validator,
+		Transactions: txs,
 	}
-	block.Hash = hashBlock(block)
+	block.Hash = bc.computeHash(block)
 	bc.Chain = append(bc.Chain, block)
-	return block
+	return &block
 }
 
-func hashBlock(b *Block) string {
-	h := sha256.New()
-	h.Write([]byte(string(b.Height)))
-	h.Write([]byte(b.PrevHash))
-	h.Write([]byte(string(b.Timestamp)))
+// computeHash generates a SHA256 hash of the block
+func (bc *Blockchain) computeHash(b Block) string {
+	data := strconv.Itoa(b.Height) + b.PrevHash + strconv.FormatInt(b.Timestamp, 10) + b.Validator
 	for _, tx := range b.Transactions {
-		h.Write([]byte(tx.From + tx.To))
+		data += tx.From +
+			tx.To +
+			strconv.FormatFloat(tx.Amount, 'f', -1, 64) +
+			strconv.FormatFloat(tx.Fee, 'f', -1, 64) +
+			tx.Data +
+			tx.Sig
 	}
-	return hex.EncodeToString(h.Sum(nil))
+	hash := sha256.Sum256([]byte(data))
+	return hex.EncodeToString(hash[:])
+}
+
+// GetLatestBlock returns the last block in the chain
+func (bc *Blockchain) GetLatestBlock() *Block {
+	return &bc.Chain[len(bc.Chain)-1]
 }

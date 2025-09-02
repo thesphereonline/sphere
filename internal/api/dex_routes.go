@@ -37,6 +37,27 @@ func registerDexRoutes(app *fiber.App, db *sql.DB, dexModule *dex.Module) {
 		return c.Status(201).JSON(pool)
 	})
 
+	// Add liquidity
+	app.Post("/dex/pools/:id/add", func(c *fiber.Ctx) error {
+		id, err := strconv.Atoi(c.Params("id"))
+		if err != nil {
+			return c.Status(400).SendString("invalid pool id")
+		}
+		var body struct {
+			Owner   string `json:"owner"`
+			AmountA string `json:"amountA"`
+			AmountB string `json:"amountB"`
+		}
+		if err := c.BodyParser(&body); err != nil {
+			return c.Status(400).SendString(err.Error())
+		}
+		res, err := dexModule.AddLiquidity(c.Context(), id, body.Owner, body.AmountA, body.AmountB)
+		if err != nil {
+			return c.Status(400).SendString(err.Error())
+		}
+		return c.JSON(res)
+	})
+
 	// Swap tokens
 	app.Post("/dex/pools/:id/swap", func(c *fiber.Ctx) error {
 		id, err := strconv.Atoi(c.Params("id"))
