@@ -14,9 +14,6 @@ import (
 func main() {
 	log.Println("🚀 Starting The Sphere backend...")
 
-	// Create blockchain in-memory as before
-	bc := core.NewBlockchain()
-
 	// Database
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
@@ -32,12 +29,16 @@ func main() {
 	}
 	log.Println("✅ Connected to Postgres")
 
-	// apply migrations
+	// Apply migrations
 	if err := db.ApplyMigrations(sqlDB, "./migrations"); err != nil {
 		log.Fatalf("migrations failed: %v", err)
 	}
 	log.Println("✅ Migrations applied")
 
+	// Blockchain
+	bc := core.NewBlockchain()
+
+	// Start HTTP server
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
