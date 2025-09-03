@@ -1,138 +1,106 @@
 "use client";
-
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 
 type Block = {
-  Height: number;
-  Hash: string;
-  PrevHash: string;
-  Timestamp: number;
-  Validator: string;
-  Transactions: {
-    From: string;
-    To: string;
-    Amount: number;
-    Fee: number;
-    Data: string;
-    Sig: string;
-  }[];
+  id: number;
+  hash: string;
+  previous_hash: string;
+  timestamp: string;
 };
 
-export default function Dashboard() {
-  const [blocks, setBlocks] = useState<Block[]>([]);
-  const [from, setFrom] = useState("joe");
-  const [to, setTo] = useState("cerys");
-  const [amount, setAmount] = useState(100);
-  const [data, setData] = useState("Test transaction");
-  const [sig, setSig] = useState("test-signature"); // plain string now
-  const API_URL = "https://loving-light-production.up.railway.app";
+type Validator = {
+  id: number;
+  name: string;
+  stake: number;
+};
 
-  // Fetch blocks
+export default function DashboardPage() {
+  const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+
+  const [blocks, setBlocks] = useState<Block[]>([]);
+  const [validators, setValidators] = useState<Validator[]>([]);
+
+  // Fetch blockchain data
   const fetchBlocks = async () => {
     try {
-      const res = await fetch(`${API_URL}/blocks`);
-      if (!res.ok) throw new Error("Failed to fetch blocks");
-      const data: Block[] = await res.json();
+      const res = await fetch(`${API}/blocks`);
+      if (!res.ok) throw new Error("Failed to load blocks");
+      const data = await res.json();
       setBlocks(data);
     } catch (err) {
-      console.error("Error fetching blocks:", err);
+      console.error(err);
+      setBlocks([]);
+    }
+  };
+
+  const fetchValidators = async () => {
+    try {
+      const res = await fetch(`${API}/validators`);
+      if (!res.ok) throw new Error("Failed to load validators");
+      const data = await res.json();
+      setValidators(data);
+    } catch (err) {
+      console.error(err);
+      setValidators([]);
     }
   };
 
   useEffect(() => {
     fetchBlocks();
+    fetchValidators();
   }, []);
 
-  // Submit a new tx -> block
-  const handleAddBlock = async () => {
-    try {
-      const res = await fetch(`${API_URL}/tx`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          From: from,
-          To: to,
-          Amount: amount,
-          Fee: 1,
-          Data: data,
-          Sig: sig, // send plain string
-        }),
-      });
-
-      if (!res.ok) throw new Error("Failed to add block");
-      await fetchBlocks(); // refresh after adding
-      alert("✅ Block added!");
-    } catch (err) {
-      console.error(err);
-      alert("❌ Error adding block. Check backend logs.");
-    }
-  };
-
   return (
-    <div className="bg-black text-orange-500 min-h-screen p-6">
-      <h1 className="text-4xl font-bold">Sphere Dashboard</h1>
+    <div className="p-6 bg-black text-orange-400 min-h-screen space-y-6">
+      <h1 className="text-3xl font-bold">Sphere Dashboard</h1>
 
-      {/* Grid layout */}
-      <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-        
-        {/* Block List */}
-        <div className="bg-orange-900/20 rounded-2xl p-4">
-          <h2 className="text-2xl">Latest Blocks</h2>
-          <ul className="mt-2 space-y-1">
-            {blocks.slice(-5).map((b) => (
-              <li key={b.Hash} className="text-sm">
-                <span className="font-semibold">#{b.Height}</span> –{" "}
-                {b.Hash.slice(0, 12)}...
+      {/* Latest Blocks */}
+      <div className="p-4 bg-orange-900/20 rounded-2xl space-y-3">
+        <h2 className="text-xl">Latest Blocks</h2>
+        <ul className="space-y-2">
+          {blocks.length > 0 ? (
+            blocks.map((b) => (
+              <li
+                key={b.id}
+                className="p-2 bg-black border border-orange-500 rounded-lg"
+              >
+                <p className="font-mono text-sm">
+                  <span className="font-bold">Hash:</span> {b.hash}
+                </p>
+                <p className="font-mono text-xs text-orange-300">
+                  Prev: {b.previous_hash}
+                </p>
+                <p className="text-xs text-orange-200">
+                  {new Date(b.timestamp).toLocaleString()}
+                </p>
               </li>
-            ))}
-          </ul>
-        </div>
+            ))
+          ) : (
+            <p className="text-orange-300">No blocks found</p>
+          )}
+        </ul>
+      </div>
 
-        {/* Test Block Form */}
-        <div className="bg-orange-900/20 rounded-2xl p-4 flex flex-col gap-2">
-          <h2 className="text-2xl">Add Test Transaction</h2>
-          <input
-            type="text"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-            placeholder="From"
-            className="p-2 rounded bg-orange-800 text-orange-100"
-          />
-          <input
-            type="text"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            placeholder="To"
-            className="p-2 rounded bg-orange-800 text-orange-100"
-          />
-          <input
-            type="number"
-            value={amount}
-            onChange={(e) => setAmount(Number(e.target.value))}
-            placeholder="Amount"
-            className="p-2 rounded bg-orange-800 text-orange-100"
-          />
-          <input
-            type="text"
-            value={data}
-            onChange={(e) => setData(e.target.value)}
-            placeholder="Data"
-            className="p-2 rounded bg-orange-800 text-orange-100"
-          />
-          <input
-            type="text"
-            value={sig}
-            onChange={(e) => setSig(e.target.value)}
-            placeholder="Signature"
-            className="p-2 rounded bg-orange-800 text-orange-100"
-          />
-          <button
-            onClick={handleAddBlock}
-            className="mt-2 px-4 py-2 bg-orange-600 text-black rounded-xl hover:bg-orange-400"
-          >
-            Add Test Block
-          </button>
-        </div>
+      {/* Validators */}
+      <div className="p-4 bg-orange-900/20 rounded-2xl space-y-3">
+        <h2 className="text-xl">Validators</h2>
+        <ul className="space-y-2">
+          {validators.length > 0 ? (
+            validators.map((v) => (
+              <li
+                key={v.id}
+                className="p-2 bg-black border border-orange-500 rounded-lg"
+              >
+                <p>
+                  <span className="font-bold">{v.name}</span> —{" "}
+                  {v.stake.toLocaleString()} tokens staked
+                </p>
+              </li>
+            ))
+          ) : (
+            <p className="text-orange-300">No validators found</p>
+          )}
+        </ul>
       </div>
     </div>
   );
