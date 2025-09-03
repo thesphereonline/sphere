@@ -23,10 +23,7 @@ func StartServer(bc *core.Blockchain, port string, dbConn *sql.DB) error {
 		AllowCredentials: true,
 	}))
 
-	dexModule := dex.New(dbConn, 30) // fee default 30 bps
-
-	// Create mempool and attach to runtime
-	mempool := core.NewMempool(0)
+	dexModule := dex.New(dbConn, 30)
 
 	// Blockchain routes
 	app.Get("/blocks", func(c *fiber.Ctx) error {
@@ -68,25 +65,24 @@ func StartServer(bc *core.Blockchain, port string, dbConn *sql.DB) error {
 			log.Printf("❌ Failed to parse tx: %v", err)
 			return c.Status(400).SendString(err.Error())
 		}
-		if err := mempool.AddTx(*tx); err != nil {
-			return c.Status(500).SendString(err.Error())
-		}
+		bc.AddTx(*tx)
 		return c.JSON(fiber.Map{"status": "queued"})
 	})
 
 	// Mine / flush mempool into a block (dev endpoint)
 	app.Post("/mine", func(c *fiber.Ctx) error {
-		pending := mempool.Flush()
-		if len(pending) == 0 {
+		block := bc.MinePending("local-miner-1")
+		if block == nil {
 			return c.Status(400).SendString("no pending txs")
 		}
-		block := bc.AddBlock(pending, "local-miner-1")
+
 		// persist block & transactions
 		if _, err := db.SaveBlock(dbConn, block); err != nil {
 			log.Printf("❌ failed to save block: %v", err)
 			// note: don't rollback in-memory chain — in prod you'd coordinate differently
 			return c.Status(500).SendString(fmt.Sprintf("save block: %v", err))
 		}
+
 		return c.JSON(block)
 	})
 

@@ -7,6 +7,7 @@ import (
 	"sphere/internal/api"
 	"sphere/internal/core"
 	"sphere/internal/db"
+	"time"
 
 	_ "github.com/lib/pq"
 )
@@ -37,6 +38,18 @@ func main() {
 
 	// Blockchain
 	bc := core.NewBlockchain()
+
+	// Auto-miner goroutine
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		for {
+			<-ticker.C
+			block := bc.MinePending("validator-1")
+			if block != nil {
+				log.Printf("⛏️  Mined block #%d with %d txs", block.Height, len(block.Transactions))
+			}
+		}
+	}()
 
 	// Start HTTP server
 	port := os.Getenv("PORT")

@@ -5,10 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"strconv"
+	"sync"
 	"time"
 )
 
-// Transaction represents a blockchain transaction
 type Transaction struct {
 	From   string  `json:"from"`
 	To     string  `json:"to"`
@@ -18,7 +18,6 @@ type Transaction struct {
 	Sig    string  `json:"sig"`
 }
 
-// Block represents a blockchain block
 type Block struct {
 	Height       int           `json:"height"`
 	Hash         string        `json:"hash"`
@@ -28,12 +27,12 @@ type Block struct {
 	Transactions []Transaction `json:"transactions"`
 }
 
-// Blockchain is a chain of blocks
 type Blockchain struct {
-	Chain []Block
+	Chain     []Block
+	PendingTx []Transaction
+	mu        sync.Mutex
 }
 
-// NewBlockchain initializes the blockchain with a genesis block
 func NewBlockchain() *Blockchain {
 	genesis := Block{
 		Height:    0,
@@ -42,25 +41,41 @@ func NewBlockchain() *Blockchain {
 		Timestamp: time.Now().Unix(),
 		Validator: "genesis-validator",
 	}
-	return &Blockchain{Chain: []Block{genesis}}
+	return &Blockchain{Chain: []Block{genesis}, PendingTx: []Transaction{}}
 }
 
-// AddBlock adds a new block with transactions to the chain
-func (bc *Blockchain) AddBlock(txs []Transaction, validator string) *Block {
+// AddTx adds a transaction to the mempool
+func (bc *Blockchain) AddTx(tx Transaction) {
+	bc.mu.Lock()
+	defer bc.mu.Unlock()
+	bc.PendingTx = append(bc.PendingTx, tx)
+}
+
+// MinePending creates a new block if there are pending txs
+func (bc *Blockchain) MinePending(validator string) *Block {
+	bc.mu.Lock()
+	defer bc.mu.Unlock()
+
+	if len(bc.PendingTx) == 0 {
+		return nil
+	}
+
 	prev := bc.Chain[len(bc.Chain)-1]
 	block := Block{
 		Height:       prev.Height + 1,
 		PrevHash:     prev.Hash,
 		Timestamp:    time.Now().Unix(),
 		Validator:    validator,
-		Transactions: txs,
+		Transactions: bc.PendingTx,
 	}
 	block.Hash = bc.computeHash(block)
+
 	bc.Chain = append(bc.Chain, block)
+	bc.PendingTx = []Transaction{} // clear mempool
+
 	return &block
 }
 
-// computeHash generates a SHA256 hash of the block
 func (bc *Blockchain) computeHash(b Block) string {
 	data := strconv.Itoa(b.Height) + b.PrevHash + strconv.FormatInt(b.Timestamp, 10) + b.Validator
 	for _, tx := range b.Transactions {
@@ -75,7 +90,6 @@ func (bc *Blockchain) computeHash(b Block) string {
 	return hex.EncodeToString(hash[:])
 }
 
-// GetLatestBlock returns the last block in the chain
 func (bc *Blockchain) GetLatestBlock() *Block {
 	return &bc.Chain[len(bc.Chain)-1]
 }
